@@ -1,0 +1,107 @@
+// Copyright (c) 2017-2020 Xiamen Yaji Software Co., Ltd.
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: sprite-vs:vert
+      frag: sprite-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        alphaThreshold: { value: 0.5 }
+        bluramount: { value: 0.03 }
+}%
+
+CCProgram sprite-vs %{
+  precision highp float;
+  #include <cc-global>
+  #if USE_LOCAL
+    #include <cc-local>
+  #endif
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+
+    #if USE_LOCAL
+      pos = cc_matWorld * pos;
+    #endif
+
+    #if USE_PIXEL_ALIGNMENT
+      pos = cc_matView * pos;
+      pos.xyz = floor(pos.xyz);
+      pos = cc_matProj * pos;
+    #else
+      pos = cc_matViewProj * pos;
+    #endif
+
+    uv0 = a_texCoord;
+    color = a_color;
+
+    return pos;
+  }
+}%
+
+CCProgram sprite-fs %{
+  precision highp float;
+  #include <embedded-alpha>
+  #include <alpha-test>
+
+  in vec4 color;
+
+  #if USE_TEXTURE
+    in vec2 uv0;
+    #pragma builtin(local)
+    layout(set = 2, binding = 10) uniform sampler2D cc_spriteTexture;
+  #endif
+
+  uniform FragConstants {
+    float bluramount;
+  };
+
+  vec4 draw(vec2 uv) {
+      return CCSampleWithAlphaSeparated(cc_spriteTexture, uv).rgba;
+  }
+  float grid(float var, float size) {
+      return floor(var* size) /size;
+  }
+  float rand(vec2 co){
+      return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+  vec4 mainImage(out vec4 o)
+  {
+      vec2 uv = uv0.xy;
+      vec4 blurred_image = vec4(0.);
+      #pragma define repeats 40.
+      for (float i = 0.; i < repeats; i++) {
+          vec2 q = vec2(cos(degrees((i / repeats) * 360.)), sin(degrees((i / repeats) * 360.))) * (rand(vec2(i, uv.x + uv.y)) + bluramount);
+          vec2 uv2 = uv + (q * bluramount);
+          blurred_image += draw(uv2) / 2.;
+          q = vec2(cos(degrees((i / repeats) * 360.)), sin(degrees((i / repeats) * 360.))) * (rand(vec2(i + 2., uv.x + uv.y + 24.)) + bluramount);
+          uv2 = uv + (q * bluramount);
+          blurred_image += draw(uv2) / 2.;
+      }
+      blurred_image /= repeats;
+      o = vec4(blurred_image);
+      return o;
+  }
+
+  vec4 frag () {
+    vec4 o = vec4(1, 1, 1, 1);
+    o*=color;
+    return mainImage(o);
+  }
+}%
