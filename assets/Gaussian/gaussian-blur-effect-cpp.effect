@@ -1,0 +1,136 @@
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: sprite-vs:vert
+      frag: sprite-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        alphaThreshold: { value: 0.5 }
+        _BlurOffsetX: {value: 0,editor: { slide: true, range: [-1.0, 1.0], step: 0.0001 }}
+        _BlurOffsetY: {value: 0,editor: { slide: true, range: [-1.0, 1.0], step: 0.0001 }}
+        # _BlurOffsetX: {value: 0}
+        # _BlurOffsetY: {value: 0}
+}%
+
+CCProgram sprite-vs %{
+  precision highp float;
+  #include <cc-global>
+  #if USE_LOCAL
+    #include <cc-local>
+  #endif
+  // #if SAMPLE_FROM_RT
+    // #include <common-define>
+  // #endif
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+  // out vec4 uv01;
+  // out vec4 uv23;
+  // out vec4 uv45;
+  // uniform Constant{
+  //   float _BlurOffsetX;
+  //   float _BlurOffsetY;
+  // };
+
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+
+    #if USE_LOCAL
+      pos = cc_matWorld * pos;
+    #endif
+
+    #if USE_PIXEL_ALIGNMENT
+      pos = cc_matView * pos;
+      pos.xyz = floor(pos.xyz);
+      pos = cc_matProj * pos;
+    #else
+      pos = cc_matViewProj * pos;
+    #endif
+
+    uv0 = a_texCoord;
+    // #if SAMPLE_FROM_RT
+    //   CC_HANDLE_RT_SAMPLE_FLIP(uv0);
+    // #endif
+    color = a_color;
+    // uv01 = uv0.xyxy + vec4(_BlurOffsetX, _BlurOffsetY, _BlurOffsetX, _BlurOffsetY) * vec4(1.0, 1.0, -1.0, -1.0);
+		// uv23 = uv0.xyxy + vec4(_BlurOffsetX, _BlurOffsetY, _BlurOffsetX, _BlurOffsetY) * vec4(1.0, 1.0, -1.0, -1.0) * 2.0;
+		// uv45 = uv0.xyxy + vec4(_BlurOffsetX, _BlurOffsetY, _BlurOffsetX, _BlurOffsetY) * vec4(1.0, 1.0, -1.0, -1.0) * 3.0;
+
+    return pos;
+  }
+}%
+
+CCProgram sprite-fs %{
+  precision highp float;
+  #include <embedded-alpha>
+  #include <alpha-test>
+
+  in vec4 color;
+
+  #if USE_TEXTURE
+    in vec2 uv0;
+    // in vec4 uv01;
+    // in vec4 uv23;
+    // in vec4 uv45;
+    #pragma builtin(local)
+    layout(set = 2, binding = 11) uniform sampler2D cc_spriteTexture;
+  #endif
+
+  uniform Constant{
+    float _BlurOffsetX;
+    float _BlurOffsetY;
+  };
+
+  // 模糊半径
+  // for 循环的次数必须为常量
+  const float RADIUS = 25.0;
+
+  // 获取模糊颜色 
+  vec4 getBlurColor () {
+    vec4 color = vec4(0.0); // 初始颜色
+    float sum = 0.0; // 总权重
+    // vec2 size = vec2(_BlurOffsetX, _BlurOffsetY);
+    // 卷积过程
+    for (float r = -RADIUS; r <= RADIUS; r++) { // 水平方向
+      for (float c = -RADIUS; c <= RADIUS; c++) { // 垂直方向
+        vec2 target = uv0 + vec2(r * _BlurOffsetX, c * _BlurOffsetY); // 目标像素位置
+        float weight = (RADIUS - abs(r)) * (RADIUS - abs(c)); // 计算权重
+        color += CCSampleWithAlphaSeparated(cc_spriteTexture, target) * weight; // 累加颜色
+        sum += weight; // 累加权重
+      }
+    }
+    color /= sum; // 求出平均值
+    return color;
+  }
+
+
+  vec4 frag () {
+    vec4 o = vec4(1, 1, 1, 1);
+
+    #if USE_TEXTURE
+      o *= getBlurColor();
+      #if IS_GRAY
+        float gray  = 0.2126 * o.r + 0.7152 * o.g + 0.0722 * o.b;
+        o.r = o.g = o.b = gray;
+      #endif
+    #endif
+
+    o *= color;
+    // ALPHA_TEST(o);
+    return o;
+  }
+}%

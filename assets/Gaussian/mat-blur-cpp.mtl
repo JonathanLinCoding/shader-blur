@@ -4,13 +4,12 @@
   "_objFlags": 0,
   "_native": "",
   "_effectAsset": {
-    "__uuid__": "44d1321e-f9a8-4bd0-b225-1978c590483e",
+    "__uuid__": "a179c3f8-4824-470c-ae58-7501f02fd019",
     "__expectedType__": "cc.EffectAsset"
   },
   "_techIdx": 0,
   "_defines": [
     {
-      "USE_ALPHA_TEST": true,
       "USE_TEXTURE": true
     }
   ],
@@ -27,7 +26,7 @@
   ],
   "_props": [
     {
-      "alphaThreshold": 0
+      "_BlurOffsetY": -0.00015
     }
   ]
 }
